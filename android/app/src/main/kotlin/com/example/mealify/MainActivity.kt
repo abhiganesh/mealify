@@ -1,0 +1,6 @@
+package com.example.mealify
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity: FlutterActivity() {
+}
