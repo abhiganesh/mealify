@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const MyApp());
@@ -3751,24 +3755,32 @@ class _MyHomePageState extends State<MyHomePage> {
               Container(
                 padding: EdgeInsets.all(16.0),
                 child: ElevatedButton(
-                    child: Text("mealify!",
-                        style: GoogleFonts.lato(
-                            textStyle:
-                                TextStyle(fontSize: 20, color: Colors.white))),
-                    style: ButtonStyle(
-                        padding: MaterialStateProperty.all<EdgeInsets>(
-                            EdgeInsets.all(15)),
-                        foregroundColor: MaterialStateProperty.all<Color>(
-                            const Color(0xFF784CEF)),
-                        backgroundColor: MaterialStateProperty.all<Color>(
-                            const Color(0xFF784CEF)),
-                        shape:
-                            MaterialStateProperty.all<RoundedRectangleBorder>(
-                                RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(18.0),
-                                    side: BorderSide(
-                                        color: const Color(0xFF784CEF))))),
-                    onPressed: () => null),
+                  child: Text("mealify!",
+                      style: GoogleFonts.lato(
+                          textStyle:
+                              TextStyle(fontSize: 20, color: Colors.white))),
+                  style: ButtonStyle(
+                      padding: MaterialStateProperty.all<EdgeInsets>(
+                          EdgeInsets.all(15)),
+                      foregroundColor: MaterialStateProperty.all<Color>(
+                          const Color(0xFF784CEF)),
+                      backgroundColor: MaterialStateProperty.all<Color>(
+                          const Color(0xFF784CEF)),
+                      shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+                          RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18.0),
+                              side:
+                                  BorderSide(color: const Color(0xFF784CEF))))),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => RecipePage(
+                                ingredientsList: ingredientsPageList,
+                              )),
+                    );
+                  },
+                ),
               )
             ]),
             Expanded(
@@ -3820,6 +3832,19 @@ class _IngredientsPageListViewBuilderState
 class IngredientTile extends StatefulWidget {
   final String ingredient, quantity, unit;
   const IngredientTile(this.ingredient, this.quantity, this.unit);
+
+  String getIngredient() {
+    return ingredient;
+  }
+
+  String getQuantity() {
+    return quantity;
+  }
+
+  String getUnit() {
+    return unit;
+  }
+
   @override
   _IngredientTileState createState() => _IngredientTileState();
 }
@@ -3838,7 +3863,7 @@ class _IngredientTileState extends State<IngredientTile> {
 }
 
 class RecipePage extends StatefulWidget {
-  const RecipePage({super.key, required this.ingredientsPageList});
+  const RecipePage({super.key, required this.ingredientsList});
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -3849,19 +3874,47 @@ class RecipePage extends StatefulWidget {
   // used by the build method of the State. Fields in a Widget subclass are
   // always marked "final".
 
-  final ingredientsPageList;
+  final List ingredientsList;
 
   @override
-  State<RecipePage> createState() => _IngredientsPageState();
+  State<RecipePage> createState() => _RecipePageState();
 }
 
-class _IngredientsPageState extends State<RecipePage> {
+class _RecipePageState extends State<RecipePage> {
   var _unit = "quantity";
   var _ingredient = "";
   var _quantity = "";
+  var _responseBody = "";
 
   final ingredientTextController = TextEditingController();
   final quantityTextController = TextEditingController();
+
+  Future<http.Response> postRequest() async {
+    var url = Uri.parse("https://sleepy-headland-78148.herokuapp.com/closest");
+
+    Map data = {"ingredients": []};
+    for (int i = 1; i < widget.ingredientsList.length; i++) {
+      var name = widget.ingredientsList[i].getIngredient();
+      var quantity = widget.ingredientsList[i].getQuantity();
+      var unit = widget.ingredientsList[i].getUnit();
+      data["ingredients"]
+          .add({"name": "$name", "quantity": "$quantity", "unit": "$unit"});
+    }
+
+    //encode Map to JSON
+    var body = json.encode(data);
+
+    var response = await http.post(
+        Uri.parse("https://sleepy-headland-78148.herokuapp.com/closest"),
+        headers: {"Content-Type": "application/json"},
+        body: body);
+    print("${response.statusCode}");
+    print("${response.body}");
+    setState(() {
+      _responseBody = response.body;
+    });
+    return response;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3871,6 +3924,46 @@ class _IngredientsPageState extends State<RecipePage> {
     // The Flutter framework has been optimized to make rerunning build methods
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
-    return Scaffold();
+    return Scaffold(
+        body: Column(
+      children: [
+        Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+          SizedBox(
+            height: 200,
+          ),
+          Container(
+            padding: EdgeInsets.all(16.0),
+            child: Text("your meal",
+                style: GoogleFonts.lato(
+                    textStyle:
+                        TextStyle(fontSize: 50, color: Color(0xFF784CEF)))),
+          )
+        ]),
+        Text(_responseBody),
+        // Text(widget.ingredientsList[2].getIngredient())
+        Container(
+          padding: EdgeInsets.all(16.0),
+          child: ElevatedButton(
+              child: Text("add more",
+                  style: GoogleFonts.lato(
+                      textStyle: TextStyle(fontSize: 20, color: Colors.white))),
+              style: ButtonStyle(
+                  padding:
+                      MaterialStateProperty.all<EdgeInsets>(EdgeInsets.all(15)),
+                  foregroundColor:
+                      MaterialStateProperty.all<Color>(const Color(0xFF784CEF)),
+                  backgroundColor: MaterialStateProperty.all<Color>(
+                      Color.fromARGB(255, 28, 1, 104)),
+                  shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+                      RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18.0),
+                          side: BorderSide(
+                              color: Color.fromARGB(255, 28, 1, 104))))),
+              onPressed: () => setState(() {
+                    postRequest();
+                  })),
+        ),
+      ],
+    ));
   }
 }
