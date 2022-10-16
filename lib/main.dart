@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -3588,7 +3590,86 @@ class _MyHomePageState extends State<MyHomePage> {
     "bulb"
   ];
 
+  var _responseBody = "";
+
   final List ingredientsPageList = [Column()];
+  Map<String, dynamic> responseMap = new HashMap();
+
+  Future<http.Response> postRequest() async {
+    var url = Uri.parse("https://sleepy-headland-78148.herokuapp.com/closest");
+
+    Map data = {"ingredients": []};
+    for (int i = 1; i < ingredientsPageList.length; i++) {
+      var name = ingredientsPageList[i].getIngredient();
+      var quantity = ingredientsPageList[i].getQuantity();
+      var unit = ingredientsPageList[i].getUnit();
+      if (unit == "quantity") {
+        unit = "none";
+      }
+      data["ingredients"]
+          .add({"name": "$name", "quantity": "$quantity", "unit": "$unit"});
+    }
+
+    //encode Map to JSON
+    var body = json.encode(data);
+
+    var response = await http.post(
+        Uri.parse("https://sleepy-headland-78148.herokuapp.com/closest"),
+        headers: {"Content-Type": "application/json"},
+        body: body);
+    print("${response.statusCode}");
+    print("${response.body}");
+    setState(() {
+      // _responseBody = response.body;
+      responseMap = jsonDecode(response.body.toString());
+      _responseBody = responseMap['ret'][0]['instructions'].toString();
+    });
+
+    return response;
+  }
+
+  void showLoadingDialog() {
+    showGeneralDialog(
+      barrierLabel: "Barrier",
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.5),
+      transitionDuration: Duration(milliseconds: 350),
+      context: context,
+      pageBuilder: (_, __, ___) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Container(
+            height: 150,
+            width: MediaQuery.of(context).size.width * 0.9,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(
+                    backgroundColor: Colors.grey,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(Color(0xFF784CEF))),
+              ],
+            ),
+            margin: EdgeInsets.only(
+                bottom: MediaQuery.of(context).size.height * 0.4,
+                left: MediaQuery.of(context).size.width * 0.3,
+                right: MediaQuery.of(context).size.width * 0.3),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(40),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (_, anim, __, child) {
+        return SlideTransition(
+          position: Tween(begin: Offset(0, 1), end: Offset(0, 0)).animate(anim),
+          child: child,
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3712,7 +3793,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 SizedBox(
-                  width: 20,
+                  width: 10,
                 )
               ],
             ),
@@ -3723,7 +3804,7 @@ class _MyHomePageState extends State<MyHomePage> {
               Container(
                 padding: EdgeInsets.all(16.0),
                 child: ElevatedButton(
-                    child: Text("add more",
+                    child: Text("add ingredient",
                         style: GoogleFonts.lato(
                             textStyle:
                                 TextStyle(fontSize: 20, color: Colors.white))),
@@ -3750,10 +3831,10 @@ class _MyHomePageState extends State<MyHomePage> {
                         })),
               ),
               SizedBox(
-                width: 140,
+                width: 72,
               ),
               Container(
-                padding: EdgeInsets.all(16.0),
+                padding: EdgeInsets.fromLTRB(16.0, 16, 0, 16),
                 child: ElevatedButton(
                   child: Text("mealify!",
                       style: GoogleFonts.lato(
@@ -3771,17 +3852,21 @@ class _MyHomePageState extends State<MyHomePage> {
                               borderRadius: BorderRadius.circular(18.0),
                               side:
                                   BorderSide(color: const Color(0xFF784CEF))))),
-                  onPressed: () {
+                  onPressed: () async {
+                    showLoadingDialog();
+                    await postRequest();
+                    Navigator.of(context).pop();
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                           builder: (context) => RecipePage(
                                 ingredientsList: ingredientsPageList,
+                                mealsMap: responseMap,
                               )),
                     );
                   },
                 ),
-              )
+              ),
             ]),
             Expanded(
                 child: SizedBox(
@@ -3797,7 +3882,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
 class IngredientsPageListViewBuilder extends StatefulWidget {
   final List _ingredientsPageList;
-  const IngredientsPageListViewBuilder(this._ingredientsPageList);
+  const IngredientsPageListViewBuilder(
+    this._ingredientsPageList,
+  );
   @override
   _IngredientsPageListViewBuilderState createState() =>
       _IngredientsPageListViewBuilderState();
@@ -3808,6 +3895,7 @@ class _IngredientsPageListViewBuilderState
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
+        padding: EdgeInsets.zero,
         itemCount: widget._ingredientsPageList.length,
         itemBuilder: (BuildContext ctxt, int index) {
           return Dismissible(
@@ -3863,7 +3951,8 @@ class _IngredientTileState extends State<IngredientTile> {
 }
 
 class RecipePage extends StatefulWidget {
-  const RecipePage({super.key, required this.ingredientsList});
+  RecipePage(
+      {super.key, required this.ingredientsList, required this.mealsMap});
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -3875,45 +3964,22 @@ class RecipePage extends StatefulWidget {
   // always marked "final".
 
   final List ingredientsList;
+  final Map mealsMap;
 
   @override
   State<RecipePage> createState() => _RecipePageState();
 }
 
 class _RecipePageState extends State<RecipePage> {
-  var _unit = "quantity";
-  var _ingredient = "";
-  var _quantity = "";
-  var _responseBody = "";
+  List<Widget> _mealsPageList = [];
 
   final ingredientTextController = TextEditingController();
   final quantityTextController = TextEditingController();
 
-  Future<http.Response> postRequest() async {
-    var url = Uri.parse("https://sleepy-headland-78148.herokuapp.com/closest");
-
-    Map data = {"ingredients": []};
-    for (int i = 1; i < widget.ingredientsList.length; i++) {
-      var name = widget.ingredientsList[i].getIngredient();
-      var quantity = widget.ingredientsList[i].getQuantity();
-      var unit = widget.ingredientsList[i].getUnit();
-      data["ingredients"]
-          .add({"name": "$name", "quantity": "$quantity", "unit": "$unit"});
+  void makeMealsPageList() {
+    for (var mealMap in widget.mealsMap['ret']) {
+      _mealsPageList.add(MealTile(mealMap));
     }
-
-    //encode Map to JSON
-    var body = json.encode(data);
-
-    var response = await http.post(
-        Uri.parse("https://sleepy-headland-78148.herokuapp.com/closest"),
-        headers: {"Content-Type": "application/json"},
-        body: body);
-    print("${response.statusCode}");
-    print("${response.body}");
-    setState(() {
-      _responseBody = response.body;
-    });
-    return response;
   }
 
   @override
@@ -3924,6 +3990,8 @@ class _RecipePageState extends State<RecipePage> {
     // The Flutter framework has been optimized to make rerunning build methods
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
+    makeMealsPageList();
+
     return Scaffold(
         body: Column(
       children: [
@@ -3932,38 +4000,93 @@ class _RecipePageState extends State<RecipePage> {
             height: 200,
           ),
           Container(
-            padding: EdgeInsets.all(16.0),
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: Text("your meal",
                 style: GoogleFonts.lato(
                     textStyle:
                         TextStyle(fontSize: 50, color: Color(0xFF784CEF)))),
           )
         ]),
-        Text(_responseBody),
-        // Text(widget.ingredientsList[2].getIngredient())
-        Container(
-          padding: EdgeInsets.all(16.0),
-          child: ElevatedButton(
-              child: Text("add more",
-                  style: GoogleFonts.lato(
-                      textStyle: TextStyle(fontSize: 20, color: Colors.white))),
-              style: ButtonStyle(
-                  padding:
-                      MaterialStateProperty.all<EdgeInsets>(EdgeInsets.all(15)),
-                  foregroundColor:
-                      MaterialStateProperty.all<Color>(const Color(0xFF784CEF)),
-                  backgroundColor: MaterialStateProperty.all<Color>(
-                      Color.fromARGB(255, 28, 1, 104)),
-                  shape: MaterialStateProperty.all<RoundedRectangleBorder>(
-                      RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18.0),
-                          side: BorderSide(
-                              color: Color.fromARGB(255, 28, 1, 104))))),
-              onPressed: () => setState(() {
-                    postRequest();
-                  })),
-        ),
+        Expanded(
+            child: SizedBox(
+          height: 200,
+          child: MealsPageListViewBuilder(_mealsPageList),
+        )),
       ],
     ));
+  }
+}
+
+class MealsPageListViewBuilder extends StatefulWidget {
+  final List _mealsPageList;
+  const MealsPageListViewBuilder(
+    this._mealsPageList,
+  );
+  @override
+  _MealsPageListViewBuilderState createState() =>
+      _MealsPageListViewBuilderState();
+}
+
+class _MealsPageListViewBuilderState extends State<MealsPageListViewBuilder> {
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+        padding: EdgeInsets.zero,
+        itemCount: widget._mealsPageList.length,
+        itemBuilder: (BuildContext ctxt, int index) {
+          return Dismissible(
+            // Specify the direction to swipe and delete
+            direction: DismissDirection.endToStart,
+            key: UniqueKey(),
+            onDismissed: (direction) {
+              // Removes that item the list on swipwe
+              setState(() {
+                widget._mealsPageList.removeAt(index);
+              });
+            },
+            background: Container(color: Color.fromARGB(255, 110, 3, 137)),
+            child: Container(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: widget._mealsPageList[index]),
+          );
+        });
+  }
+}
+
+class MealTile extends StatefulWidget {
+  final Map mealMap;
+  const MealTile(this.mealMap);
+
+  @override
+  _MealTileState createState() => _MealTileState();
+}
+
+class _MealTileState extends State<MealTile> {
+  Future<void> _launchInBrowser() async {
+    if (this.widget.mealMap.containsKey("url")) {
+      if (!await launchUrl(
+        Uri.parse(this.widget.mealMap["url"]),
+        mode: LaunchMode.externalApplication,
+      )) {
+        throw 'Could not launch url';
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+        padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+        child: Card(
+            child: ListTile(
+          onTap: _launchInBrowser,
+          title: Text(
+              widget.mealMap.containsKey("name")
+                  ? widget.mealMap["name"]
+                  : "unnamed",
+              style: GoogleFonts.lato(
+                  textStyle:
+                      TextStyle(fontSize: 20, color: Color(0xFF784CEF)))),
+        )));
   }
 }
